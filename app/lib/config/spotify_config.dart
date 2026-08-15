@@ -4,7 +4,7 @@
 /// and replace these values with your own credentials.
 class SpotifyConfig {
   /// Your Spotify Application Client ID
-  static const String clientId = '499a6261c052413d96eb612e79ce65c2';
+  static const String clientId = '030882501fd64d019288149bf1a902d0';
 
   /// The redirect URI registered in the Spotify Developer Dashboard.
   /// For Android, this must match the scheme in AndroidManifest.xml.
