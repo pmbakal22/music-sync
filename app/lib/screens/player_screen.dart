@@ -25,13 +25,54 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   bool _isPlaying = false;
   double _currentPosition = 0.0;
+  int _currentTrackIndex = 0;
+
+  // Active Playlist (Demo tracks + dynamic search additions)
+  final List<SpotifyTrack> _playlist = [
+    SpotifyTrack(
+      id: '1',
+      name: 'Bohemian Rhapsody',
+      artist: 'Queen',
+      albumName: 'A Night at the Opera',
+      albumArtUrl: 'https://i.scdn.co/image/ab67616d0000b273e319baafd16e84f0408af2a0',
+      uri: 'spotify:track:4cOdK2wGLETKBW3PvgPWqT',
+      durationMs: 354000,
+    ),
+    SpotifyTrack(
+      id: '2',
+      name: 'Blinding Lights',
+      artist: 'The Weeknd',
+      albumName: 'After Hours',
+      albumArtUrl: 'https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5a86d7',
+      uri: 'spotify:track:0VjDiY0FVCwcPOaGDPfStyl',
+      durationMs: 200000,
+    ),
+    SpotifyTrack(
+      id: '3',
+      name: 'Shape of You',
+      artist: 'Ed Sheeran',
+      albumName: '÷ (Divide)',
+      albumArtUrl: 'https://i.scdn.co/image/ab67616d0000b273ba5db46f4b838ef6027e6f96',
+      uri: 'spotify:track:7qiZf24HYVision3B8Qn26',
+      durationMs: 233000,
+    ),
+    SpotifyTrack(
+      id: '4',
+      name: 'Starboy',
+      artist: 'The Weeknd, Daft Punk',
+      albumName: 'Starboy',
+      albumArtUrl: 'https://i.scdn.co/image/ab67616d0000b2734718e241261b0200593b4238',
+      uri: 'spotify:track:7MXVkk9YMctZqd1Srtv4MB',
+      durationMs: 230000,
+    ),
+  ];
 
   // Currently Active Track Metadata
-  String _currentTrackUri = 'spotify:track:4cOdK2wGLETKBW3PvgPWqT';
-  String _currentTrackTitle = 'Bohemian Rhapsody';
-  String _currentArtist = 'Queen • A Night at the Opera';
-  String _currentAlbumArtUrl = 'https://i.scdn.co/image/ab67616d0000b273e319baafd16e84f0408af2a0';
-  double _totalDuration = 354.0;
+  late String _currentTrackUri;
+  late String _currentTrackTitle;
+  late String _currentArtist;
+  late String _currentAlbumArtUrl;
+  late double _totalDuration;
 
   late String _activeRoomCode;
 
@@ -46,7 +87,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void initState() {
     super.initState();
     _activeRoomCode = widget.roomCode;
+    _updateActiveTrackUI(_playlist[0]);
+
+    // Force NTP clock sync to ensure high precision time alignment
+    ClockSyncService.instance.syncClock();
+
     _setupSocketListeners();
+  }
+
+  void _updateActiveTrackUI(SpotifyTrack track) {
+    setState(() {
+      _currentTrackUri = track.uri;
+      _currentTrackTitle = track.name;
+      _currentArtist = '${track.artist} • ${track.albumName}';
+      _currentAlbumArtUrl = track.albumArtUrl;
+      _totalDuration = track.durationMs > 0 ? track.durationMs / 1000 : 200.0;
+      _currentPosition = 0.0;
+    });
   }
 
   void _setupSocketListeners() {
@@ -80,8 +137,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       debugPrint('   Calculated Delay    : ${delayMs}ms');
       debugPrint('⏱️ =================================================');
 
-      // Update current track URI
-      _currentTrackUri = payload.spotifyUri;
+      // Update track metadata UI if track matches any item in playlist or received payload
+      final matchingTrackIndex = _playlist.indexWhere((t) => t.uri == payload.spotifyUri);
+      if (matchingTrackIndex != -1) {
+        _currentTrackIndex = matchingTrackIndex;
+        _updateActiveTrackUI(_playlist[matchingTrackIndex]);
+      }
 
       if (delayMs > 0) {
         debugPrint('⏳ Precision delay for ${delayMs}ms...');
@@ -150,7 +211,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// Called when Host selects a track from search results.
-  /// Replaces hardcoded URI and feeds it into the 1.5s Buffer Strategy function.
   void _onTrackSelectedFromSearch(SpotifyTrack track) {
     if (!widget.isHost) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -162,16 +222,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    setState(() {
-      _currentTrackUri = track.uri;
-      _currentTrackTitle = track.name;
-      _currentArtist = '${track.artist} • ${track.albumName}';
-      _currentAlbumArtUrl = track.albumArtUrl;
-      _totalDuration = track.durationMs > 0 ? track.durationMs / 1000 : 200.0;
-      _currentPosition = 0.0;
-    });
+    // Add track to playlist if not already present
+    final existingIndex = _playlist.indexWhere((t) => t.uri == track.uri);
+    if (existingIndex == -1) {
+      _playlist.add(track);
+      _currentTrackIndex = _playlist.length - 1;
+    } else {
+      _currentTrackIndex = existingIndex;
+    }
 
-    // Feed selected track URI into 1.5-second Buffer Strategy broadcast
+    _updateActiveTrackUI(track);
+
+    // Broadcast selected track URI with 1.5s NTP Buffer Strategy
     _sendBufferPlayCommand(track.uri);
   }
 
@@ -265,12 +327,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Future<void> _skipTrack() async {
-    await SpotifyService.instance.skipNext();
+  void _skipTrack() {
+    if (!widget.isHost) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the Room Host can skip tracks.'),
+          backgroundColor: AppTheme.surfaceLight,
+        ),
+      );
+      return;
+    }
+    if (_playlist.isEmpty) return;
+    _currentTrackIndex = (_currentTrackIndex + 1) % _playlist.length;
+    final nextTrack = _playlist[_currentTrackIndex];
+    _onTrackSelectedFromSearch(nextTrack);
   }
 
-  Future<void> _skipPrevious() async {
-    await SpotifyService.instance.skipPrevious();
+  void _skipPrevious() {
+    if (!widget.isHost) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the Room Host can skip tracks.'),
+          backgroundColor: AppTheme.surfaceLight,
+        ),
+      );
+      return;
+    }
+    if (_playlist.isEmpty) return;
+    _currentTrackIndex = (_currentTrackIndex - 1 + _playlist.length) % _playlist.length;
+    final prevTrack = _playlist[_currentTrackIndex];
+    _onTrackSelectedFromSearch(prevTrack);
   }
 
   String _formatDuration(double seconds) {
@@ -620,8 +706,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           },
                           onChangeEnd: (value) async {
                             if (widget.isHost) {
-                              final now = DateTime.now().millisecondsSinceEpoch;
-                              final targetTimestamp = now + 1500;
+                              final serverTime = ClockSyncService.instance.currentServerTimeMs;
+                              final targetTimestamp = serverTime + 1500;
                               SocketService.instance.sendSeekCommand(
                                 roomCode: _activeRoomCode,
                                 positionMs: (value * 1000).toInt(),

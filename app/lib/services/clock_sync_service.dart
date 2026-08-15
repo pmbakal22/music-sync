@@ -32,6 +32,19 @@ class ClockSyncService {
   /// Perform NTP Clock Synchronization with 5 sample pings.
   Future<void> syncClock() async {
     debugPrint('⏱️ Starting NTP Clock Sync with server...');
+    
+    // Wait up to 4 seconds for Socket.IO connection to establish if not connected yet
+    int attempts = 0;
+    while (!SocketService.instance.isConnected && attempts < 20) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      attempts++;
+    }
+
+    if (!SocketService.instance.isConnected) {
+      debugPrint('⚠️ Cannot perform NTP Sync: Socket.IO not connected.');
+      return;
+    }
+
     final List<int> measuredOffsets = [];
 
     _ntpPongSub?.cancel();
@@ -55,6 +68,9 @@ class ClockSyncService {
       SocketService.instance.sendNtpPing(sendTime);
       await Future.delayed(const Duration(milliseconds: 150));
     }
+
+    // Give 300ms for final pong response
+    await Future.delayed(const Duration(milliseconds: 300));
 
     // Process median offset to eliminate network jitter outliers
     if (measuredOffsets.isNotEmpty) {

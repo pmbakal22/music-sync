@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
+import 'clock_sync_service.dart';
+
 /// Data class representing a synchronized play execution command.
 class ExecutePlayPayload {
   final String roomCode;
@@ -75,6 +77,7 @@ class SocketService {
     _socket!.onConnect((_) {
       _isConnected = true;
       debugPrint('✅ Socket connected: ${_socket!.id}');
+      ClockSyncService.instance.syncClock();
     });
 
     _socket!.onDisconnect((reason) {
