@@ -6,6 +6,7 @@ import '../models/spotify_track.dart';
 import '../services/spotify_service.dart';
 import '../services/socket_service.dart';
 import '../services/clock_sync_service.dart';
+import '../services/audio_manager.dart';
 import '../widgets/search_bottom_sheet.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -147,12 +148,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (delayMs > 0) {
         debugPrint('⏳ Precision delay for ${delayMs}ms...');
         await Future.delayed(Duration(milliseconds: delayMs));
-        await SpotifyService.instance.play(payload.spotifyUri);
+        await AudioManager.instance.play(payload.spotifyUri);
       } else {
         debugPrint('⚠️ Late frame detected (${delayMs.abs()}ms behind). Seeking & playing.');
         final seekPosition = payload.positionMs + delayMs.abs();
-        await SpotifyService.instance.play(payload.spotifyUri);
-        await SpotifyService.instance.seekTo(seekPosition);
+        await AudioManager.instance.play(payload.spotifyUri);
+        await AudioManager.instance.seekTo(seekPosition);
       }
 
       if (mounted) {
@@ -160,7 +161,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _isPlaying = true;
         });
         _showBufferExecutionSnack(
-          'Playing track via Spotify SDK (NTP Synced)',
+          'Playing track via Audio Engine (NTP Synced)',
           payload.targetTimestamp,
           delayMs > 0 ? delayMs : 0,
         );
@@ -176,7 +177,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await Future.delayed(Duration(milliseconds: delayMs));
       }
 
-      await SpotifyService.instance.pause();
+      await AudioManager.instance.pause();
 
       if (mounted) {
         setState(() {

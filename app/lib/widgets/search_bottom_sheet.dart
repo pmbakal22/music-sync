@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/spotify_track.dart';
 import '../services/spotify_service.dart';
+import '../services/local_music_service.dart';
 
-/// Modal bottom sheet providing a real-time search interface for Spotify tracks.
+/// Modal bottom sheet providing a real-time search interface for Spotify tracks
+/// AND local MP3 audio files from phone storage.
 class SearchBottomSheet extends StatefulWidget {
   final Function(SpotifyTrack track) onTrackSelected;
 
@@ -17,22 +19,18 @@ class SearchBottomSheet extends StatefulWidget {
   State<SearchBottomSheet> createState() => _SearchBottomSheetState();
 }
 
-class _SearchBottomSheetState extends State<SearchBottomSheet> {
+class _SearchBottomSheetState extends State<SearchBottomSheet> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _tokenController = TextEditingController();
-  List<SpotifyTrack> _searchResults = [];
+
+  List<SpotifyTrack> _spotifyResults = [];
+  List<SpotifyTrack> _localTracks = [];
   bool _isLoading = false;
   String? _errorMessage;
   Timer? _debounceTimer;
 
-  void _onSearchChanged(String query) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
-      _performSearch(query);
-    });
-  }
-
-  // Demo fallback tracks for testing when API token is unavailable
+  // Demo fallback tracks for testing
   final List<SpotifyTrack> _demoTracks = [
     SpotifyTrack(
       id: '1',
@@ -75,13 +73,31 @@ class _SearchBottomSheetState extends State<SearchBottomSheet> {
   @override
   void initState() {
     super.initState();
-    _searchResults = _demoTracks;
+    _tabController = TabController(length: 2, vsync: this);
+    _spotifyResults = _demoTracks;
+    _scanLocalAudio();
+  }
+
+  Future<void> _scanLocalAudio() async {
+    final tracks = await LocalMusicService.instance.scanLocalAudioFiles();
+    if (mounted) {
+      setState(() {
+        _localTracks = tracks;
+      });
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(query);
+    });
   }
 
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) {
       setState(() {
-        _searchResults = _demoTracks;
+        _spotifyResults = _demoTracks;
         _errorMessage = null;
       });
       return;
@@ -95,7 +111,7 @@ class _SearchBottomSheetState extends State<SearchBottomSheet> {
     try {
       final results = await SpotifyService.instance.searchTracks(query);
       setState(() {
-        _searchResults = results;
+        _spotifyResults = results;
         _isLoading = false;
       });
     } catch (e) {
@@ -115,9 +131,16 @@ class _SearchBottomSheetState extends State<SearchBottomSheet> {
   }
 
   @override
+  void dispose() {
+    _tabController.dispose();
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
+      height: MediaQuery.of(context).size.height * 0.82,
       decoration: const BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -136,194 +159,245 @@ class _SearchBottomSheetState extends State<SearchBottomSheet> {
           ),
           const SizedBox(height: 16),
 
-          // Header Title
+          // Header Title & Tab Bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
-            child: Row(
-              children: const [
-                Icon(Icons.search_rounded, color: AppTheme.spotifyGreen, size: 24),
-                SizedBox(width: 10),
-                Text(
-                  'Search Spotify Tracks',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppTheme.background,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicator: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: AppTheme.spotifyGreen,
                 ),
-              ],
+                labelColor: Colors.black,
+                unselectedLabelColor: AppTheme.textSecondary,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: const [
+                  Tab(text: '🎵 Spotify Web API'),
+                  Tab(text: '📁 Local MP3 Audio'),
+                ],
+              ),
             ),
           ),
 
           const SizedBox(height: 16),
 
-          // Search Input Bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0),
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
-              onChanged: _onSearchChanged,
-              onSubmitted: _performSearch,
-              decoration: InputDecoration(
-                hintText: 'Search title, artist, or album...',
-                hintStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-                prefixIcon: const Icon(Icons.search, color: AppTheme.textSecondary),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.send_rounded, color: AppTheme.spotifyGreen),
-                  onPressed: () => _performSearch(_searchController.text),
-                ),
-                filled: true,
-                fillColor: AppTheme.background,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Error / Token Missing Banner
-          if (_errorMessage != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // TAB 1: Spotify Search
+                Column(
                   children: [
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        onChanged: _onSearchChanged,
+                        onSubmitted: _performSearch,
+                        decoration: InputDecoration(
+                          hintText: 'Search Spotify catalog (artist, song)...',
+                          hintStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                          prefixIcon: const Icon(Icons.search, color: AppTheme.textSecondary),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.send_rounded, color: AppTheme.spotifyGreen),
+                            onPressed: () => _performSearch(_searchController.text),
+                          ),
+                          filled: true,
+                          fillColor: AppTheme.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _tokenController,
-                            style: const TextStyle(fontSize: 11, color: Colors.white),
-                            decoration: const InputDecoration(
-                              hintText: 'Paste Web API Token to bypass',
-                              hintStyle: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            ),
+
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _errorMessage!,
+                                style: const TextStyle(fontSize: 11, color: Colors.white),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _tokenController,
+                                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Paste Web API Token to bypass',
+                                        hintStyle: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: _saveTokenAndSearch,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.spotifyGreen,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    ),
+                                    child: const Text('Use Token', style: TextStyle(fontSize: 11, color: Colors.black)),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _saveTokenAndSearch,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.spotifyGreen,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                          child: const Text('Use Token', style: TextStyle(fontSize: 11, color: Colors.black)),
-                        ),
-                      ],
+                      ),
+
+                    Expanded(
+                      child: _isLoading
+                          ? const Center(child: CircularProgressIndicator(color: AppTheme.spotifyGreen))
+                          : _buildTrackListView(_spotifyResults),
                     ),
                   ],
                 ),
-              ),
-            ),
 
-          // Results List / Loader
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppTheme.spotifyGreen),
-                  )
-                : _searchResults.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No tracks found. Try another search term.',
-                          style: TextStyle(color: AppTheme.textSecondary),
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-                        itemCount: _searchResults.length,
-                        separatorBuilder: (context, index) => const Divider(
-                          color: AppTheme.surfaceLight,
-                          height: 1,
-                        ),
-                        itemBuilder: (context, index) {
-                          final track = _searchResults[index];
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                            leading: Container(
-                              width: 52,
-                              height: 52,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
-                                color: AppTheme.surfaceLight,
-                              ),
-                              child: track.albumArtUrl.isNotEmpty
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        track.albumArtUrl,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const Icon(
-                                          Icons.music_note_rounded,
-                                          color: AppTheme.spotifyGreen,
-                                        ),
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.music_note_rounded,
-                                      color: AppTheme.spotifyGreen,
-                                    ),
+                // TAB 2: Local MP3 Audio Scanner
+                Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Phone Storage Music Files',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
                             ),
-                            title: Text(
-                              track.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: Colors.white,
-                              ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _scanLocalAudio,
+                            icon: const Icon(Icons.refresh_rounded, size: 16, color: AppTheme.accentNeon),
+                            label: const Text('Scan Storage', style: TextStyle(fontSize: 12, color: AppTheme.accentNeon)),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppTheme.accentNeon),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             ),
-                            subtitle: Text(
-                              '${track.artist} • ${track.albumName}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                            trailing: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                color: AppTheme.spotifyGreen,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow_rounded,
-                                color: Colors.black,
-                                size: 20,
-                              ),
-                            ),
-                            onTap: () {
-                              widget.onTrackSelected(track);
-                              Navigator.pop(context);
-                            },
-                          );
-                        },
+                          ),
+                        ],
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: _buildTrackListView(_localTracks),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTrackListView(List<SpotifyTrack> tracks) {
+    if (tracks.isEmpty) {
+      return const Center(
+        child: Text(
+          'No audio tracks found.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+      itemCount: tracks.length,
+      separatorBuilder: (context, index) => const Divider(
+        color: AppTheme.surfaceLight,
+        height: 1,
+      ),
+      itemBuilder: (context, index) {
+        final track = tracks[index];
+        final isLocal = track.uri.startsWith('local:');
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+          leading: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: AppTheme.surfaceLight,
+            ),
+            child: track.albumArtUrl.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      track.albumArtUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Icon(
+                        isLocal ? Icons.sd_card_rounded : Icons.music_note_rounded,
+                        color: isLocal ? AppTheme.accentNeon : AppTheme.spotifyGreen,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    isLocal ? Icons.sd_storage_rounded : Icons.music_note_rounded,
+                    color: isLocal ? AppTheme.accentNeon : AppTheme.spotifyGreen,
+                  ),
+          ),
+          title: Text(
+            track.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.white,
+            ),
+          ),
+          subtitle: Text(
+            '${track.artist} • ${track.albumName}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          trailing: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isLocal ? AppTheme.accentNeon : AppTheme.spotifyGreen,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.play_arrow_rounded,
+              color: Colors.black,
+              size: 18,
+            ),
+          ),
+          onTap: () {
+            widget.onTrackSelected(track);
+            Navigator.pop(context);
+          },
+        );
+      },
     );
   }
 }

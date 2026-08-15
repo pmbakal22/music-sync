@@ -46,6 +46,8 @@
         </activity>
     </application>
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <!-- Android 11+ Package Visibility Queries for Spotify App Remote IPC -->
     <queries>
