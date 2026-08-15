@@ -38,23 +38,64 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              success ? Icons.check_circle_rounded : Icons.error_outline_rounded,
-              color: success ? AppTheme.spotifyGreen : Colors.redAccent,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(success
-                ? 'Connected to Spotify!'
-                : 'Failed to connect. Is Spotify app installed?'),
+    if (!success) {
+      _showSpotifyTroubleshootDialog();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.check_circle_rounded, color: AppTheme.spotifyGreen, size: 20),
+              SizedBox(width: 8),
+              Text('Connected to Spotify App Remote!'),
+            ],
+          ),
+          backgroundColor: AppTheme.surfaceLight,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _showSpotifyTroubleshootDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 24),
+            SizedBox(width: 10),
+            Text('Spotify Connection Helper', style: TextStyle(fontSize: 18, color: Colors.white)),
           ],
         ),
-        backgroundColor: AppTheme.surfaceLight,
-        behavior: SnackBarBehavior.floating,
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Text(
+                'To connect Spotify App Remote on Android, please verify:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary),
+              ),
+              SizedBox(height: 12),
+              Text('1. Spotify App Installed', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.spotifyGreen, fontSize: 13)),
+              Text('• Official Spotify app must be installed on your phone and logged into a Spotify Premium account.', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              SizedBox(height: 10),
+              Text('2. Spotify Developer Portal Settings', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.spotifyGreen, fontSize: 13)),
+              Text('In developer.spotify.com/dashboard under Edit Settings:', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              SizedBox(height: 4),
+              SelectableText('• Redirect URI: spotify-sdk://auth\n• Package Name: com.example.app\n• SHA-1 Fingerprint:\n51:7C:E4:56:C8:30:26:D0:28:85:37:41:E9:04:BE:09:F9:CA:18:C0', style: TextStyle(fontSize: 11, color: AppTheme.accentNeon, fontFamily: 'monospace')),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK, Got It', style: TextStyle(color: AppTheme.spotifyGreen, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
