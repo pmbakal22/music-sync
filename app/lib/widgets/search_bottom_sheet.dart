@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/spotify_track.dart';
@@ -22,6 +23,14 @@ class _SearchBottomSheetState extends State<SearchBottomSheet> {
   List<SpotifyTrack> _searchResults = [];
   bool _isLoading = false;
   String? _errorMessage;
+  Timer? _debounceTimer;
+
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(query);
+    });
+  }
 
   // Demo fallback tracks for testing when API token is unavailable
   final List<SpotifyTrack> _demoTracks = [
@@ -155,6 +164,7 @@ class _SearchBottomSheetState extends State<SearchBottomSheet> {
               controller: _searchController,
               autofocus: true,
               style: const TextStyle(color: Colors.white, fontSize: 16),
+              onChanged: _onSearchChanged,
               onSubmitted: _performSearch,
               decoration: InputDecoration(
                 hintText: 'Search title, artist, or album...',

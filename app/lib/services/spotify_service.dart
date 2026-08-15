@@ -115,8 +115,11 @@ class SpotifyService {
       throw Exception('Spotify Access Token missing. Please log in with Spotify.');
     }
 
-    final encodedQuery = Uri.encodeComponent(query.trim());
-    final url = Uri.parse('https://api.spotify.com/v1/search?q=$encodedQuery&type=track&limit=20');
+    final url = Uri.https('api.spotify.com', '/v1/search', {
+      'q': query.trim(),
+      'type': 'track',
+      'limit': '20',
+    });
 
     debugPrint('🔍 Searching Spotify Web API: $url');
 
