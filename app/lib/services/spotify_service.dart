@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:spotify_sdk/spotify_sdk.dart';
@@ -19,53 +20,69 @@ class SpotifyService {
   /// Set token manually (e.g. for testing / Web fallback).
   void setAccessToken(String token) {
     _accessToken = token;
+    _isConnected = true;
     debugPrint('🔑 Access token set manually: ${token.substring(0, token.length > 10 ? 10 : token.length)}...');
   }
 
-  /// Connect to Spotify App Remote SDK with an 8-second timeout safety guard.
+  /// Connect to Spotify App Remote SDK & Web OAuth.
   Future<bool> connectToSpotify() async {
     try {
-      debugPrint('🎵 Attempting Spotify App Remote connection (Client ID: ${SpotifyConfig.clientId})...');
+      debugPrint('🎵 Step 1: Requesting Spotify OAuth Access Token (Client ID: ${SpotifyConfig.clientId})...');
 
-      final result = await SpotifySdk.connectToSpotifyRemote(
+      // Request Spotify Access Token via SDK OAuth prompt
+      final token = await SpotifySdk.getAccessToken(
+        clientId: SpotifyConfig.clientId,
+        redirectUrl: SpotifyConfig.redirectUrl,
+        scope: SpotifyConfig.scope,
+      ).timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {
+          debugPrint('⏱️ Spotify access token request timed out');
+          return '';
+        },
+      );
+
+      if (token.isNotEmpty) {
+        _accessToken = token;
+        _isConnected = true;
+        debugPrint('🔑 Access Token retrieved successfully!');
+      }
+
+      debugPrint('🎵 Step 2: Connecting to Spotify App Remote service...');
+      final remoteConnected = await SpotifySdk.connectToSpotifyRemote(
         clientId: SpotifyConfig.clientId,
         redirectUrl: SpotifyConfig.redirectUrl,
         scope: SpotifyConfig.scope,
       ).timeout(
         const Duration(seconds: 8),
         onTimeout: () {
-          debugPrint('⏱️ Spotify App Remote connection timed out after 8s');
+          debugPrint('⏱️ Spotify App Remote connection timed out');
           return false;
         },
       );
 
-      _isConnected = result;
-      debugPrint('🎵 Spotify Remote connected status: $_isConnected');
-
-      if (_isConnected) {
-        // Fetch Web API token in background without blocking execution
-        fetchAccessToken().timeout(const Duration(seconds: 5)).catchError((e) {
-          debugPrint('⚠️ Web API token background fetch failed: $e');
-          return null;
-        });
-      }
+      _isConnected = remoteConnected || (_accessToken != null && _accessToken!.isNotEmpty);
+      debugPrint('🎵 Final Spotify connection status: $_isConnected');
       return _isConnected;
     } catch (e) {
-      debugPrint('❌ Spotify App Remote connection error: $e');
-      _isConnected = false;
-      return false;
+      debugPrint('❌ Spotify connection error: $e');
+      _isConnected = (_accessToken != null && _accessToken!.isNotEmpty);
+      return _isConnected;
     }
   }
 
   /// Retrieve Spotify Web API Access Token.
   Future<String?> fetchAccessToken() async {
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
+      return _accessToken;
+    }
     try {
       final token = await SpotifySdk.getAccessToken(
         clientId: SpotifyConfig.clientId,
         redirectUrl: SpotifyConfig.redirectUrl,
         scope: SpotifyConfig.scope,
       ).timeout(
-        const Duration(seconds: 6),
+        const Duration(seconds: 8),
         onTimeout: () {
           debugPrint('⏱️ Spotify access token fetch timed out');
           return '';
@@ -74,6 +91,7 @@ class SpotifyService {
 
       if (token.isNotEmpty) {
         _accessToken = token;
+        _isConnected = true;
         debugPrint('🔑 Spotify access token fetched successfully');
       }
       return _accessToken;
