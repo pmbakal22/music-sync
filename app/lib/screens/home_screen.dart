@@ -22,8 +22,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Connect to local Socket.IO server on port 3000
-    SocketService.instance.connect(serverUrl: 'http://localhost:3000');
+    // Connect to Render public Socket.IO server
+    SocketService.instance.connect(serverUrl: 'https://music-sync-server-sxbq.onrender.com');
   }
 
   Future<void> _loginWithSpotify() async {
@@ -430,7 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'Universal Remote Mode: Socket.IO Server @ localhost:3000 • Buffer Strategy 1.5s Active.',
+                                  'Universal Remote Mode: Server @ music-sync-server-sxbq.onrender.com • Buffer Strategy 1.5s Active.',
                                   style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                                 ),
                               ),

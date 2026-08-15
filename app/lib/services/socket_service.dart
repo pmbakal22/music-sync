@@ -54,7 +54,7 @@ class SocketService {
   Stream<String> get onError => _errorController.stream;
 
   /// Connect to the Node.js Socket.IO server at [serverUrl].
-  void connect({String serverUrl = 'http://localhost:3000'}) {
+  void connect({String serverUrl = 'https://music-sync-server-sxbq.onrender.com'}) {
     if (_socket != null && _socket!.connected) {
       debugPrint('⚡ Socket already connected');
       return;

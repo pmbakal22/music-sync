@@ -27,10 +27,15 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        manifestPlaceholders["redirectSchemeName"] = "spotify-sdk"
+        manifestPlaceholders["redirectHostName"] = "auth"
     }
 
     buildTypes {
         release {
+            isMinifyEnabled = false
+            isShrinkResources = false
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
@@ -47,3 +52,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation(project(":spotify-app-remote"))
+}
+
