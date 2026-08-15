@@ -43,6 +43,7 @@ class SocketService {
   final _executePauseController = StreamController<Map<String, dynamic>>.broadcast();
   final _executeSeekController = StreamController<Map<String, dynamic>>.broadcast();
   final _executeSkipController = StreamController<Map<String, dynamic>>.broadcast();
+  final _ntpPongController = StreamController<Map<String, dynamic>>.broadcast();
   final _errorController = StreamController<String>.broadcast();
 
   Stream<String> get onRoomCreated => _roomCreatedController.stream;
@@ -51,6 +52,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onExecutePause => _executePauseController.stream;
   Stream<Map<String, dynamic>> get onExecuteSeek => _executeSeekController.stream;
   Stream<Map<String, dynamic>> get onExecuteSkip => _executeSkipController.stream;
+  Stream<Map<String, dynamic>> get onNtpPong => _ntpPongController.stream;
   Stream<String> get onError => _errorController.stream;
 
   /// Connect to the Node.js Socket.IO server at [serverUrl].
@@ -129,6 +131,12 @@ class SocketService {
       }
     });
 
+    _socket!.on('ntp_pong', (data) {
+      if (data is Map) {
+        _ntpPongController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
     _socket!.on('error_message', (data) {
       debugPrint('❌ Server error_message: $data');
       if (data is Map && data.containsKey('message')) {
@@ -152,6 +160,11 @@ class SocketService {
   /// Leave current room.
   void leaveRoom() {
     _socket?.emit('leave_room');
+  }
+
+  /// Send `ntp_ping` with client timestamp for server clock alignment.
+  void sendNtpPing(int clientSendTime) {
+    _socket?.emit('ntp_ping', {'clientSendTime': clientSendTime});
   }
 
   /// Send `play_command` with Spotify Track URI and target execution timestamp (Buffer Strategy).

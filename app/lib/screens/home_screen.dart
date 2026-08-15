@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_theme.dart';
 import '../services/spotify_service.dart';
 import '../services/socket_service.dart';
+import '../services/clock_sync_service.dart';
 import 'player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,8 +23,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Connect to Render public Socket.IO server
+    // Connect to Render public Socket.IO server and initiate NTP Clock Sync
     SocketService.instance.connect(serverUrl: 'https://music-sync-server-sxbq.onrender.com');
+    ClockSyncService.instance.syncClock();
   }
 
   Future<void> _loginWithSpotify() async {

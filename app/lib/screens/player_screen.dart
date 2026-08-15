@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../models/spotify_track.dart';
 import '../services/spotify_service.dart';
 import '../services/socket_service.dart';
+import '../services/clock_sync_service.dart';
 import '../widgets/search_bottom_sheet.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -64,43 +65,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
       debugPrint('✅ Joined room on server: $data');
     });
 
-    // ── BUFFER STRATEGY LISTENERS ──────────────────────────────────────────────
+    // ── BUFFER STRATEGY LISTENERS (NTP CLOCK ALIGNED) ─────────────────────────
 
     _executePlaySub = socketService.onExecutePlay.listen((payload) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final delayMs = payload.targetTimestamp - now;
+      final currentServerTime = ClockSyncService.instance.currentServerTimeMs;
+      final delayMs = payload.targetTimestamp - currentServerTime;
 
       debugPrint('⏱️ =================================================');
-      debugPrint('⏱️ BUFFER STRATEGY EXECUTE_PLAY RECEIVED');
-      debugPrint('   Room Code       : ${payload.roomCode}');
-      debugPrint('   Spotify Track   : ${payload.spotifyUri}');
-      debugPrint('   Target Timestamp: ${payload.targetTimestamp}');
-      debugPrint('   Current Clock   : $now');
-      debugPrint('   Delay to Exec   : ${delayMs}ms');
+      debugPrint('⏱️ NTP BUFFER EXECUTE_PLAY RECEIVED');
+      debugPrint('   Room Code           : ${payload.roomCode}');
+      debugPrint('   Spotify Track       : ${payload.spotifyUri}');
+      debugPrint('   Target Timestamp    : ${payload.targetTimestamp}');
+      debugPrint('   Current Server Clock: $currentServerTime');
+      debugPrint('   Calculated Delay    : ${delayMs}ms');
       debugPrint('⏱️ =================================================');
 
-      if (delayMs > 0) {
-        debugPrint('⏳ Waiting ${delayMs}ms until device clock hits target timestamp...');
-        await Future.delayed(Duration(milliseconds: delayMs));
-      } else {
-        debugPrint('⚠️ Device clock past target by ${delayMs.abs()}ms. Playing immediately.');
-      }
-
-      final execTime = DateTime.now().millisecondsSinceEpoch;
-      debugPrint('⚡ TARGET TIMESTAMP MATCHED at $execTime! Triggering SpotifySdk.play().');
-
-      // Update current track URI if different
+      // Update current track URI
       _currentTrackUri = payload.spotifyUri;
 
-      // Trigger local Spotify SDK play
-      await SpotifyService.instance.play(payload.spotifyUri);
+      if (delayMs > 0) {
+        debugPrint('⏳ Precision delay for ${delayMs}ms...');
+        await Future.delayed(Duration(milliseconds: delayMs));
+        await SpotifyService.instance.play(payload.spotifyUri);
+      } else {
+        debugPrint('⚠️ Late frame detected (${delayMs.abs()}ms behind). Seeking & playing.');
+        final seekPosition = payload.positionMs + delayMs.abs();
+        await SpotifyService.instance.play(payload.spotifyUri);
+        await SpotifyService.instance.seekTo(seekPosition);
+      }
 
       if (mounted) {
         setState(() {
           _isPlaying = true;
         });
         _showBufferExecutionSnack(
-          'Playing track via Spotify SDK',
+          'Playing track via Spotify SDK (NTP Synced)',
           payload.targetTimestamp,
           delayMs > 0 ? delayMs : 0,
         );
@@ -109,8 +108,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _executePauseSub = socketService.onExecutePause.listen((data) async {
       final targetTimestamp = (data['targetTimestamp'] as num?)?.toInt() ?? 0;
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final delayMs = targetTimestamp - now;
+      final currentServerTime = ClockSyncService.instance.currentServerTimeMs;
+      final delayMs = targetTimestamp - currentServerTime;
 
       if (delayMs > 0) {
         await Future.delayed(Duration(milliseconds: delayMs));
@@ -178,13 +177,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Calculate future 1.5s timestamp and send play_command to Socket.IO server.
   void _sendBufferPlayCommand(String spotifyUri) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final targetTimestamp = now + 1500;
+    final serverTime = ClockSyncService.instance.currentServerTimeMs;
+    final targetTimestamp = serverTime + 1500;
 
-    debugPrint('🚀 BROADCASTING SELECTED TRACK WITH 1.5s BUFFER:');
-    debugPrint('   Selected URI       : $spotifyUri');
-    debugPrint('   Current Local Time : $now');
-    debugPrint('   Target Timestamp   : $targetTimestamp (+1500ms)');
+    debugPrint('🚀 BROADCASTING SELECTED TRACK WITH 1.5s NTP BUFFER:');
+    debugPrint('   Selected URI          : $spotifyUri');
+    debugPrint('   Current Server Time   : $serverTime');
+    debugPrint('   Target NTP Timestamp  : $targetTimestamp (+1500ms)');
 
     SocketService.instance.sendPlayCommand(
       roomCode: _activeRoomCode,
@@ -209,8 +208,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     if (_isPlaying) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final targetTimestamp = now + 1500;
+      final serverTime = ClockSyncService.instance.currentServerTimeMs;
+      final targetTimestamp = serverTime + 1500;
       SocketService.instance.sendPauseCommand(
         roomCode: _activeRoomCode,
         targetTimestamp: targetTimestamp,
