@@ -22,19 +22,33 @@ class SpotifyService {
     debugPrint('🔑 Access token set manually: ${token.substring(0, token.length > 10 ? 10 : token.length)}...');
   }
 
-  /// Connect to Spotify App Remote SDK.
+  /// Connect to Spotify App Remote SDK with an 8-second timeout safety guard.
   Future<bool> connectToSpotify() async {
     try {
-      final token = await SpotifySdk.connectToSpotifyRemote(
+      debugPrint('🎵 Attempting Spotify App Remote connection (Client ID: ${SpotifyConfig.clientId})...');
+
+      final result = await SpotifySdk.connectToSpotifyRemote(
         clientId: SpotifyConfig.clientId,
         redirectUrl: SpotifyConfig.redirectUrl,
         scope: SpotifyConfig.scope,
+      ).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          debugPrint('⏱️ Spotify App Remote connection timed out after 8s');
+          return false;
+        },
       );
-      _isConnected = token;
-      debugPrint('🎵 Spotify Remote connected: $_isConnected');
 
-      // Fetch Web API Access Token after connection
-      await fetchAccessToken();
+      _isConnected = result;
+      debugPrint('🎵 Spotify Remote connected status: $_isConnected');
+
+      if (_isConnected) {
+        // Fetch Web API token in background without blocking execution
+        fetchAccessToken().timeout(const Duration(seconds: 5)).catchError((e) {
+          debugPrint('⚠️ Web API token background fetch failed: $e');
+          return null;
+        });
+      }
       return _isConnected;
     } catch (e) {
       debugPrint('❌ Spotify App Remote connection error: $e');
@@ -50,9 +64,18 @@ class SpotifyService {
         clientId: SpotifyConfig.clientId,
         redirectUrl: SpotifyConfig.redirectUrl,
         scope: SpotifyConfig.scope,
+      ).timeout(
+        const Duration(seconds: 6),
+        onTimeout: () {
+          debugPrint('⏱️ Spotify access token fetch timed out');
+          return '';
+        },
       );
-      _accessToken = token;
-      debugPrint('🔑 Spotify access token fetched successfully');
+
+      if (token.isNotEmpty) {
+        _accessToken = token;
+        debugPrint('🔑 Spotify access token fetched successfully');
+      }
       return _accessToken;
     } catch (e) {
       debugPrint('❌ Error fetching Spotify access token: $e');
@@ -61,8 +84,6 @@ class SpotifyService {
   }
 
   /// Search Spotify Web API for tracks matching [query].
-  ///
-  /// Endpoint: `https://api.spotify.com/v1/search?q={query}&type=track&limit=20`
   Future<List<SpotifyTrack>> searchTracks(String query) async {
     if (query.trim().isEmpty) return [];
 
